@@ -1,85 +1,120 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import Model
-import matplotlib.pyplot as plt
-import tensorflow_probability as tfp
+from tensorflow.keras.layers import InputLayer, Dense, Reshape, Conv2DTranspose, Conv2D, Flatten
+import os
 
 
-class VarEncoder(Model):
+class VarAE(tf.keras.Model):
+    """This Variational Autoencoder's parameters are based on the world model paper by Schmidhuber """
+    def __init__(
+        self,
+        latent_dim,
+        input_shape = (64,64,3),
+        load_model = True
+    ):
 
-    def __init__(self, embedding_size = 10):
-        super(VarEncoder, self).__init__()
+        super(VarAE, self).__init__()
 
-        self.encoder = [
-                tf.keras.layers.Conv2D(filters = 32, kernel_size = 4, strides = 2, padding = 'valid', activation = 'relu'),
-                tf.keras.layers.Conv2D(filters = 64, kernel_size = 4, strides = 2, padding = 'valid', activation = 'relu'),
-                tf.keras.layers.Conv2D(filters = 128, kernel_size = 4, strides = 2, padding = 'valid', activation = 'relu'),
-                tf.keras.layers.Conv2D(filters = 256, kernel_size = 4, strides = 2, padding = 'valid', activation = 'relu'),
+        self.optimizer = tf.keras.optimizers.Adam(0.0001)
+        self.encoder = tf.keras.Sequential([
+                InputLayer(input_shape=input_shape),
+                Conv2D(filters=32, kernel_size=4, strides=2, padding='valid', activation='relu'),
+                Conv2D(filters=64, kernel_size=4, strides=2, padding='valid', activation='relu'),
+                Conv2D(filters=128, kernel_size=4, strides=2, padding='valid', activation='relu'),
+                Conv2D(filters=256, kernel_size=4, strides=2, padding='valid', activation='relu'),
+                Flatten(),
+                Dense(latent_dim+latent_dim)
 
-
-                tf.keras.layers.Flatten(),
-            ]
-
-    def call(self, x):
-        for layer in self.encoder:
-            x = layer(x)
-        # Define the multivariate normal distribution
-        # using the first half of the output of the dense layer as mean and the second half as variance
-        x = tfp.distributions.MultivariateNormalDiag(loc=x[:,:self.embedding_size], scale_diag=x[:,self.embedding_size:])
-        return x
-
-
-class VarDecoder(Model):
-    def __init__(self):
-        super(VarDecoder, self).__init__()
-
-        self.decoder = [
+            ])
+        self.decoder = tf.keras.Sequential([
                 # The input shape for the first decoding layer has again the shape
                 # of the embedding size, because we sample one embedding value
                 # for each (µ and σ) pair
-                tf.keras.layers.InputLayer(input_shape=(embedding_size)),
-                tf.keras.layers.Dense(units=7*7*64, activation=tf.nn.relu),
-                tf.keras.layers.Reshape(target_shape=(7, 7, 64)),
-                tf.keras.layers.Conv2DTranspose(filters=128, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
-	            tf.keras.layers.Conv2DTranspose(filters=64, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
-		        tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=6, strides=2, padding='valid', activation=tf.nn.relu),
-		        tf.keras.layers.Conv2DTranspose(filters=3, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
-            ]
+                InputLayer(input_shape=(latent_dim,)),
+                Dense(units=4*256, activation=tf.nn.relu),
+                Reshape(target_shape=([-1, 1, 4*256])),
+                Conv2DTranspose(filters=128, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
+                Conv2DTranspose(filters=64, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
+                Conv2DTranspose(filters=32, kernel_size=6, strides=2, padding='valid', activation=tf.nn.relu),
+                Conv2DTranspose(filters=3, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
+            ])
 
-    def call(self, x):
-        for layer in self.my_layers:
-            x = layer(x)
-        return x
+        self.models = {
+            'encoder': self.encoder,
+            'decoder': self.decoder
+        }
 
+    @tf.function
+    def call(self, batch):
 
-class VarAutoencoder(Model):
-    def __init__(self, prior, embedding_size = 10):
-        super(VarAutoencoder, self).__init__()
-        self.prior = prior
-        self.input_layer = tf.keras.layers.Input(my_input_shape)
+        means, logvars = tf.split(
+            self.encoder(batch), num_or_size_splits=2, axis=1)
 
-        self.encoder = VarEncoder(embedding_size)
+        epsilon = tf.random.normal(shape=means.shape)
+        latent = means + epsilon * tf.exp(logvars * 0.5)
 
-        self.decoder = VarDecoder(embedding_size)
+        generated = self.decoder(latent)
 
-        self.out = self.call(self.input_layer)
+        return generated
 
-    def call(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x.sample())
-        return x
+    def loss(self, batch):
+        kl_tolerance = 0.5
 
+        means, logvars = tf.split(
+            self.encoder(batch), num_or_size_splits=2, axis=1)
 
+        epsilon = tf.random.normal(shape = means.shape)
+        latent = means + epsilon * tf.exp(logvars * 0.5)
 
-def compute_loss(self):
-	logits_flat = tf.layers.flatten(self.reconstructions)
-	labels_flat = tf.layers.flatten(self.resized_image)
-	reconstruction_loss = tf.reduce_sum(tf.square(logits_flat - labels_flat), axis = 1)
-	kl_loss = 0.5 * tf.reduce_sum(tf.exp(self.z_logvar) + self.z_mu**2 - 1. - self.z_logvar, 1)
-	vae_loss = tf.reduce_mean(reconstruction_loss + kl_loss)
-	return vae_loss
+        generated = self.decoder(latent)
 
+        reconstruction_loss = tf.reduce_mean(
+            tf.reduce_sum(tf.square(batch - generated), axis=[1, 2, 3])
+        )
 
+        unclipped_kl_loss = - 0.5 * tf.reduce_sum(
+            1 + logvars - tf.square(means) - tf.exp(logvars),
+            axis=1
+        )
+
+        kl_loss = tf.reduce_mean(
+            tf.maximum(unclipped_kl_loss, kl_tolerance * self.latent_dim)
+        )
+        return {
+            'reconstruction-loss': reconstruction_loss,
+            'unclipped-kl-loss': unclipped_kl_loss,
+            'kl-loss': kl_loss
+        }
+
+    def backward(self, batch):
+        with tf.GradientTape() as tape:
+            losses = self.loss(batch)
+            gradients = tape.gradient(
+                sum(losses.values()), self.trainable_variables
+            )
+
+        self.optimizer.apply_gradients(
+                zip(gradients, self.trainable_variables)
+        )
+        return losses
+
+    def save(self, filepath):
+        """ only model weights """
+        filepath = os.path.join(filepath, 'models')
+        os.makedirs(filepath, exist_ok=True)
+        print('saving model to {}'.format(filepath))
+
+        for name, model in self.models.items():
+            model.save_weights('{}/{}.h5'.format(filepath, name))
+
+    def load(self, filepath):
+        """ only model weights """
+        filepath = os.path.join(filepath, 'models')
+        print('loading model from {}'.format(filepath))
+
+        for name, model in self.models.items():
+            model.load_weights('{}/{}.h5'.format(filepath, name))
+            self.models[name] = model
 
 
 def train_model(model, train_dataset, test_dataset, num_epochs, loss_function, optimizer):
