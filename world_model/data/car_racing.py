@@ -1,11 +1,14 @@
 from gym.envs.box2d.car_racing import CarRacing
-from .gatherer import process_frame
+from gym.spaces.box import Box
+from world_model.data.gatherer import process_frame
 
 
 class CarRacingWrapper(CarRacing):
 
     def __init__(self):
         super(CarRacingWrapper, self).__init__()
+        # To deal with the processed images
+        self.observation_space = Box(low=-1, high=1, shape=(1, 64, 64, 1))
 
     def step(self, action):
         """ One step in the environment """
@@ -24,11 +27,7 @@ class CarRacingWrapper(CarRacing):
     def reset(self):
         """ Resets the env and returns initial obs """
         raw = super().reset()
-
         # Solves bug where the image wasnt rendering
         self.viewer.window.dispatch_events()
 
-        return process_frame(
-            raw,
-            vertical_cut=84
-        )
+        return raw

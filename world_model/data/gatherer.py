@@ -15,10 +15,10 @@ def random_rollout(env, episode_length=1000):
     observation = env.reset()
     step = 0
     while not done:
+        #env.render("human")
         action = env.action_space.sample()
         next_observation, reward, done, info = env.step(action)
-        observation = process_frame(observation)
-        transition = {'observation': observation, 'action': action}
+        transition = {'observation': np.expand_dims(np.expand_dims(observation, 0), -1), 'action': action}
         for key, data in transition.items():
             results[key].append(data)
 
@@ -40,5 +40,10 @@ def process_frame(frame, screen_size=(64, 64), vertical_cut=4, max_val=255.0):
     # RGB --> Greyscale
     obs = np.array(obs)
     obs = np.dot(obs[..., :3], RBG_WEIGHTS)
+    # Normalize values
+    #  Between 0-1
+    obs = obs / max_val
+    #  Between -1 and 1
+    obs = obs * 2 - 1
 
-    return obs / max_val
+    return obs

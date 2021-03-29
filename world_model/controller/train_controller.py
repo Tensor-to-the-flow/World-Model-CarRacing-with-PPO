@@ -1,138 +1,68 @@
-import numpy as np
 from .ppo import PPO
-import logging, os
-
-logging.disable(logging.WARNING)
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-import tensorflow as tf
-import numpy as np
-import ray
-from really import SampleManager
-from really.utils import (
-    dict_to_dict_of_datasets,
-)
+from ..data.car_racing import CarRacingWrapper
 
 
-def train(model):
+def train_controller(model, env, max_episodes=1000):
 
-    learning_rate = 0.001
-    optimizer = tf.keras.optimizers.Adam(learning_rate)
-    num_episodes = 20
+    for ep in range(max_episodes):
+        state_batch = []
+        action_batch = []
+        reward_batch = []
+        old_policy_batch = []
 
-    kwargs = {
-        "model": PPO,
-        "environment": "LunarLanderContinuous-v2",
-        "num_parallel": 5,
-        "total_steps": 100,
-        "action_sampling_type": "continuous_normal_diagonal",
-        "num_episodes": num_episodes,
-    }
+        episode_reward, done = 0, False
 
-    ray.init(log_to_driver=False)
+        state = env.reset()
+        env.viewer.window.dispatch_events()
 
-    manager = SampleManager(**kwargs)
-    # where to save your results to: create this directory in advance!
-    saving_path = os.getcwd() + "/progress_pg_lunarlander"
+        while not done:
+            log_old_policy, action = model.actor.get_action(state)
 
-    buffer_size = 1000
-    test_steps = 250
-    epochs = 3
-    sample_size = 100
-    optim_batch_size = 24
-    saving_after = 5
+            next_state, reward, done, _ = self.env.step(action)
 
-    # keys for replay buffer -> what you will need for optimization
-    optim_keys = ["state", "action", "reward", "state_new", "not_done"]
+            state = np.reshape(state, [1, self.state_dim])
+            action = np.reshape(action, [1, self.action_dim])
+            next_state = np.reshape(next_state, [1, self.state_dim])
+            reward = np.reshape(reward, [1, 1])
+            log_old_policy = np.reshape(log_old_policy, [1, 1])
 
-    # initialize buffer
-    print("Filling up the whole Experience Replay Buffer...")
-    manager.initilize_buffer(buffer_size, optim_keys)
+            state_batch.append(state)
+            action_batch.append(action)
+            reward_batch.append((reward + 8) / 8)
+            old_policy_batch.append(log_old_policy)
 
-    # initilize progress aggregator
-    manager.initialize_aggregator(
-        path=saving_path, saving_after=5, aggregator_keys=["loss", "time_steps"]
-    )
+            if len(state_batch) >= args.update_interval or done:
+                states = self.list_to_batch(state_batch)
+                actions = self.list_to_batch(action_batch)
+                rewards = self.list_to_batch(reward_batch)
+                old_policys = self.list_to_batch(old_policy_batch)
 
-    # initial testing:
-    print("test before training: ")
-    #manager.test(test_steps, do_print=True)
+                v_values = self.critic.model.predict(states)
+                next_v_value = self.critic.model.predict(next_state)
 
-    # get initial agent
-    agent = manager.get_agent()
+                gaes, td_targets = self.gae_target(
+                    rewards, v_values, next_v_value, done)
 
-    for e in range(epochs):
+                for epoch in range(args.epochs):
+                    actor_loss = self.actor.train(
+                        old_policys, states, actions, gaes)
+                    critic_loss = self.critic.train(states, td_targets)
 
-        print("Collecting data to train on...")
-        # sample data to optimize on from buffer
-        sample_dict = manager.sample(sample_size, from_buffer=False)
-        print(f"collected data for: {sample_dict.keys()}")
-        #sample_dict['state'] = np.expand_dims(sample_dict['state'], -1)
-        # create and batch tf datasets
-        data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=None)
-        print("optimizing...")
+                state_batch = []
+                action_batch = []
+                reward_batch = []
+                old_policy_batch = []
 
-        # Collect the batched tf.datatsets
-        state = data_dict['state']
-        action = data_dict['action']
-        reward = data_dict['reward']
-        state_new = data_dict['state_new']
-        not_done = data_dict['not_done']
+            episode_reward += reward[0][0]
+            state = next_state[0]
 
-        # Train loop lists
-        losses = []
-        future_reward = []
-        r_storage = []
-        log_probs = []
-
-        for s, a, r, sn, nd in zip(state, action, reward, state_new, not_done):
-            r_storage.append(r)
-            # If 1 episode finished
-            if nd == 0:
-                current_future_reward = []
-                acc_reward = 0
-                # Compute future rewards for this episode
-                for reward in reversed(r_storage):
-                    acc_reward += reward
-                    current_future_reward.append(acc_reward)
-                # Collect future rewards for all episodes
-                future_reward = tf.concat(future_reward, current_future_reward.reverse(), 0)
-                r_storage = []
-            # Compute log probabilities over all episodes
-            log_probs = tf.concat(log_probs, agent.flowing_log_prob(s, a), 0)
-
-        # Update weights
-        with tf.GradientTape() as tape:
-            loss = tf.reduce_sum(-(log_probs * future_reward)) / num_episodes
-            gradients = tape.gradient(loss, agent.model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, agent.model.trainable_variables))
-
-        losses.append(np.mean(loss))
-
-        # set new weights
-        manager.set_agent(agent.get_weights())
-        # get new agent
-        agent = manager.get_agent()
-        # update aggregator
-        time_steps = manager.test(test_steps)
-        manager.update_aggregator(loss=losses, time_steps=time_steps)
-        # print progress
-        print(
-            f"epoch ::: {e}  loss ::: {np.mean(loss)}   avg env steps ::: {np.mean(time_steps)}"
-        )
-
-        """
-        if e % saving_after == 0:
-            # you can save models
-            manager.save_model(saving_path, e)
-        """
-
-    # and load mmodels
-    #manager.load_model(saving_path)
-    print("done")
-    print("testing optimized agent")
-    manager.test(test_steps, test_episodes=10, render=True, do_print=True)
+        print('EP{} EpisodeReward={}'.format(ep, episode_reward))
+        # wandb.log({'Reward': episode_reward})
 
 
 if __name__ == "__main__":
-    model = PPO()
+
+    carracing = CarRacingWrapper()
+    model = PPO(carracing.action_space.high[0], )
+
+    train_controller(model, carracing)
