@@ -1,7 +1,10 @@
-import tensorflow as tf
-import numpy as np
 import math
 import os
+
+import numpy as np
+import tensorflow as tf
+
+# https://github.com/hardmaru/WorldModelsExperiments/blob/master/carracing/rnn/rnn.py
 
 
 def get_pi_idx(pis, threshold):
@@ -19,6 +22,25 @@ def get_pi_idx(pis, threshold):
     #  if we get to this point, something is wrong!
     print('pdf {} thresh {}'.format(pdf, threshold))
     return idx
+
+
+class MLP(tf.keras.Model):
+    """ used for testing only """
+    def __init__(self, num_mix, hidden_nodes):
+        super().__init__()
+        self.perceptron = tf.keras.Sequential(
+            [tf.keras.layers.Dense(
+                24,
+                dtype='float32',
+                activation='tanh',
+                kernel_initializer=tf.initializers.RandomNormal(stddev=0.5)
+            ),
+             tf.keras.layers.Dense(num_mix * 3, dtype='float32')
+            ]
+        )
+
+    def __call__(self, input_tensor):
+        return self.perceptron(input_tensor)
 
 
 class LSTM():
