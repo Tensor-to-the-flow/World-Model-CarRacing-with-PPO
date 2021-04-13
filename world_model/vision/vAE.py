@@ -8,7 +8,7 @@ tf.keras.backend.set_floatx('float64')
 
 class VAE(tf.keras.Model):
     """This Variational Autoencoder's parameters are based on the world model paper by Schmidhuber """
-    def __init__(self, latent_dim=32):
+    def __init__(self, latent_dim=32, load_model=False, results_dir=None):
         super(VAE, self).__init__()
         self.latent_dim = latent_dim
 
@@ -33,13 +33,16 @@ class VAE(tf.keras.Model):
                 Conv2DTranspose(filters=128, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
                 Conv2DTranspose(filters=64, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
                 Conv2DTranspose(filters=32, kernel_size=6, strides=2, padding='valid', activation=tf.nn.relu),
-                Conv2DTranspose(filters=3, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
+                Conv2DTranspose(filters=1, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
             ])
 
         self.models = {
             'encoder': self.encoder,
             'decoder': self.decoder
         }
+
+        if load_model:
+            self.load(results_dir)
 
     @tf.function
     def call(self, batch):

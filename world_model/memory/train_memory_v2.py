@@ -11,12 +11,12 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from worldmodels.data.tf_records import shuffle_samples, parse_latent_stats
-from worldmodels.memory.memory_v2 import Memory
-from worldmodels.params import memory_params, home
+from world_model.data.tf_records import shuffle_samples, parse_latent_stats
+from world_model.memory.memory_v2 import Memory
+from world_model.params import memory_params, home
 
-from worldmodels.utils import calc_batch_per_epoch, list_records, make_directories
-from worldmodels import setup_logging
+from world_model.utils import calc_batch_per_epoch, list_records, make_directories
+from world_model import setup_logging
 
 
 def train(model, records, epochs, batch_size, batch_per_epoch, save_every):

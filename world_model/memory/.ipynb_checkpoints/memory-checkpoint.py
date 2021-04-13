@@ -1,7 +1,10 @@
-import tensorflow as tf
-import numpy as np
 import math
 import os
+
+import numpy as np
+import tensorflow as tf
+
+# https://github.com/hardmaru/WorldModelsExperiments/blob/master/carracing/rnn/rnn.py
 
 
 def get_pi_idx(pis, threshold):

@@ -20,27 +20,28 @@ class Memory(tf.keras.Model):
             num_mixtures=5,
             num_timesteps=999,
             hidden_units=None,
-            batch_size = 100,
-            grad_clip = 1.0,
-            initial_learning_rate = 0.001,
-            end_learning_rate = 0.00001,
+            batch_size=100,
+            grad_clip=1.0,
+            initial_learning_rate=0.001,
+            end_learning_rate=0.00001,
             epochs=1,
-            batch_per_epoch = 1,
+            batch_per_epoch=1,
             load_model=False,
             results_dir=None,
         ):
         super(Memory, self).__init__(name="Memory")
 
-        decay_steps = epochs * batch_per_epoch,
+        decay_steps = epochs * batch_per_epoch
         learning_rate = tf.keras.optimizers.schedules.PolynomialDecay(
             initial_learning_rate=initial_learning_rate,
             decay_steps=decay_steps,
             end_learning_rate=end_learning_rate
         )
 
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate, clipvalue=grad_clip)
+        self.optimizer = tf.keras.optimizers.Adam(0.001, clipvalue=grad_clip)
         self.loss_function = mdn.get_mixture_loss_func(output_dim, num_mixtures)
 
+        self.num_timesteps = num_timesteps
         self.lstm_nodes = lstm_nodes
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -48,7 +49,7 @@ class Memory(tf.keras.Model):
 
         #lstm_cell = tf.keras.layers.LSTMCell(lstm_nodes, kernel_initializer='glorot_uniform',recurrent_initializer='glorot_uniform',bias_initializer='zeros',name='lstm_cell')
 
-        self.lstm = tf.keras.layers.LSTM(lstm_nodes,return_sequences=True, return_state=True, name='lstm_layer')
+        self.lstm = tf.keras.layers.LSTM(lstm_nodes, return_sequences=True, return_state=True, name='lstm_layer')
 
         if hidden_units is None:
             self.hidden_layers = []
@@ -59,8 +60,8 @@ class Memory(tf.keras.Model):
 
         self.components = {
             'lstm': self.lstm,
-            'hidden_layers': self.hidden_layers,
-            'gaussian-mix': self.mdn_out
+            'gaussian-mix': self.mdn_out,
+            'hidden_layers': self.hidden_layers
         }
 
         if load_model:
@@ -85,8 +86,8 @@ class Memory(tf.keras.Model):
 
     @tf.function
     def get_zero_hidden_state(self, inputs):
-        return [tf.zeros((inputs.shape[0], self.lstm_nodes)),
-                tf.zeros((inputs.shape[0], self.lstm_nodes))]
+        return [tf.zeros((inputs.shape[0], self.lstm_nodes), dtype=tf.dtypes.float64),
+                tf.zeros((inputs.shape[0], self.lstm_nodes), dtype=tf.dtypes.float64)]
 
     @tf.function
     def get_initial_state(self, inputs):
@@ -102,7 +103,7 @@ class Memory(tf.keras.Model):
     def call(self, inputs, state, temperature=1.15):
         # inputs shape=(batch_size,num_timesteps=1,input_dim)
         # single timestep processing per call with input
-        inputs = tf.reshape(inputs, (inputs.shape[0], 1, self.input_dim))
+        inputs = tf.reshape(inputs, (inputs.shape[0], self.num_timesteps, self.input_dim))
 
         self.initial_state = state
         self.lstm.get_initial_state = self.get_initial_state
@@ -114,7 +115,7 @@ class Memory(tf.keras.Model):
         mix_params = self.mdn_out(lstm_out)
         return mix_params, h_state, c_state #, np.apply_along_axis(mdn.sample_from_output, 2, mix_params, self.output_dim, self.num_mixtures, temp=temperature) # uncomment to also compute samples from output params
 
-    def train_op(self,inputs,targets,state):
+    def train_op(self, inputs, targets, state):
         with tf.GradientTape() as tape:
             mix_params, _, _ = self(inputs, state)
             loss = self.loss_function(targets, mix_params)

@@ -24,25 +24,6 @@ def get_pi_idx(pis, threshold):
     return idx
 
 
-class MLP(tf.keras.Model):
-    """ used for testing only """
-    def __init__(self, num_mix, hidden_nodes):
-        super().__init__()
-        self.perceptron = tf.keras.Sequential(
-            [tf.keras.layers.Dense(
-                24,
-                dtype='float32',
-                activation='tanh',
-                kernel_initializer=tf.initializers.RandomNormal(stddev=0.5)
-            ),
-             tf.keras.layers.Dense(num_mix * 3, dtype='float32')
-            ]
-        )
-
-    def __call__(self, input_tensor):
-        return self.perceptron(input_tensor)
-
-
 class LSTM():
     """ car racing defaults """
     def __init__(

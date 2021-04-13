@@ -32,7 +32,7 @@ def random_rollout(env, episode_length=1000):
     return results
 
 
-def process_frame(frame, screen_size=(64, 64), vertical_cut=4, max_val=255.0):
+def process_frame(frame, screen_size=(64, 64), vertical_cut=4, max_val=255.0, negative_range=True):
     """crop, scale and converts the image to float"""
     frame = frame[:vertical_cut, :, :]
     frame = Image.fromarray(frame, mode='RGB')
@@ -44,6 +44,7 @@ def process_frame(frame, screen_size=(64, 64), vertical_cut=4, max_val=255.0):
     #  Between 0-1
     obs = obs / max_val
     #  Between -1 and 1
-    obs = obs * 2 - 1
+    if negative_range:
+        obs = obs * 2 - 1
 
     return obs
