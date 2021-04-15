@@ -1,6 +1,6 @@
 from gym.envs.box2d.car_racing import CarRacing
 from gym.spaces.box import Box
-from world_model.data.gatherer import process_frame
+from data.gatherer import process_frame
 
 
 class CarRacingWrapper(CarRacing):

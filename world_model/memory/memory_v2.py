@@ -67,23 +67,6 @@ class Memory(tf.keras.Model):
         if load_model:
             self.load(results_dir)
 
-    def save(self, filepath):
-        """ save model weights """
-        filepath = os.path.join(filepath, 'models')
-        os.makedirs(filepath, exist_ok=True)
-        print('saving model to {}'.format(filepath))
-        for name, component in self.components.items():
-            component.save_weights('{}/{}.h5'.format(filepath, name))
-
-    def load(self, filepath):
-        """ load model weights """
-        filepath = os.path.join(filepath, 'models')
-        print('loading model from {}'.format(filepath))
-
-        for name, component in self.components.items():
-            component.load_weights('{}/{}.h5'.format(filepath, name))
-            self.components[name] = component
-
     @tf.function
     def get_zero_hidden_state(self, inputs):
         return [tf.zeros((inputs.shape[0], self.lstm_nodes), dtype=tf.dtypes.float64),
