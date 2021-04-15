@@ -1,5 +1,3 @@
-import really
-import gym
 from collections import defaultdict
 from PIL import Image
 import numpy as np

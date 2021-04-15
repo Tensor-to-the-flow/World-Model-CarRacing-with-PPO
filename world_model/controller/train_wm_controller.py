@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from collections import defaultdict
 from world_model.vision.vAE import VAE
-from world_model.memory.memory_v2 import Memory
+from world_model.memory.memory import Memory
 import os
 
 
@@ -12,10 +12,9 @@ def train_controller(controller, vision, memory, collect_data=True, episode_leng
     """ runs a single episode """
     #  needs to be imported here for multiprocessing
 
-    state = memory.get_zero_hidden_state(
+    state = memory.lstm.get_zero_hidden_state(
         np.zeros(35).reshape(1, 1, 35)
-    )
-
+    )[0]
     total_reward = 0
     data = defaultdict(list)
     obs = controller.env.reset()
@@ -76,7 +75,7 @@ if __name__ == "__main__":
 
     path = os.getcwd()[:-10]
     #memory = Memory(batch_size=1, num_timesteps=1)
-    memory = Memory(load_model=False, results_dir=path + 'memory/160model')
+    memory = Memory(num_timesteps=1, load_model=True, results_dir=path + 'memory/160model')
     env = CarRacingWrapper()
     #memory.load(path + 'memory/160model')
     vision = VAE()

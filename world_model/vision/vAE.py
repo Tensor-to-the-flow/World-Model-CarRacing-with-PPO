@@ -33,7 +33,7 @@ class VAE(tf.keras.Model):
                 Conv2DTranspose(filters=128, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
                 Conv2DTranspose(filters=64, kernel_size=5, strides=2, padding='valid', activation=tf.nn.relu),
                 Conv2DTranspose(filters=32, kernel_size=6, strides=2, padding='valid', activation=tf.nn.relu),
-                Conv2DTranspose(filters=1, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
+                Conv2DTranspose(filters=3, kernel_size=6, strides=2, padding='valid', activation=tf.nn.sigmoid)
             ])
 
         self.models = {

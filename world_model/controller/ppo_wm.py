@@ -7,10 +7,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda
 import gym
-from world_model.data.car_racing import CarRacingWrapper
+#from world_model.data.car_racing import CarRacingWrapper
 import numpy as np
-from world_model.vision.vAE import VAE
-from world_model.memory.memory import Memory
+#from world_model.vision.vAE import VAE
+#from world_model.memory.memory import Memory
 
 tf.keras.backend.set_floatx('float64')
 

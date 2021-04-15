@@ -6,7 +6,6 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Conv2D, Flatten
-import gym
 from world_model.data.car_racing import CarRacingWrapper
 import numpy as np
 import time
@@ -32,15 +31,15 @@ class Actor(tf.keras.Model):
         self.std_bound = std_bound
         self.opt = tf.keras.optimizers.Adam(ACTOR_LR)
 
-        #init = tf.keras.initializers.Orthogonal()
+        init = tf.keras.initializers.Orthogonal()
         w_reg = tf.keras.regularizers.L2(0.001)
 
-        self.net = [Conv2D(filters=32, kernel_size=8, strides=4, activation=tf.nn.relu),
-                    Conv2D(filters=64, kernel_size=4, strides=2, activation=tf.nn.relu),
-                    Conv2D(filters=64, kernel_size=3, strides=1, activation=tf.nn.relu),
+        self.net = [Conv2D(filters=32, kernel_size=8, strides=4, activation=tf.nn.relu, kernel_initializer=init),
+                    Conv2D(filters=64, kernel_size=4, strides=2, activation=tf.nn.relu, kernel_initializer=init),
+                    Conv2D(filters=64, kernel_size=3, strides=1, activation=tf.nn.relu, kernel_initializer=init),
                     Flatten(),
-                    Dense(400, activation=tf.nn.relu, kernel_regularizer=w_reg),
-                    Dense(400, activation=tf.nn.relu, kernel_regularizer=w_reg)
+                    Dense(400, activation=tf.nn.relu, kernel_regularizer=w_reg, kernel_initializer=init),
+                    Dense(400, activation=tf.nn.relu, kernel_regularizer=w_reg, kernel_initializer=init)
                     ]
         self.out_mu = Dense(self.action_dim, activation=tf.nn.tanh)
         self.std_output = Dense(self.action_dim, activation='softplus')
@@ -91,25 +90,21 @@ class Actor(tf.keras.Model):
         return loss
 
 
-class Critic:
-    def __init__(self, state_dim):
+class Critic(tf.keras.Model):
+    def __init__(self, state_dim, net):
+        super(Critic, self).__init__()
         self.state_dim = state_dim
-        self.model = self.create_model()
         self.opt = tf.keras.optimizers.Adam(CRITIC_LR)
-
-    def create_model(self):
+        self.net = net
         init = tf.keras.initializers.Orthogonal()
         w_reg = tf.keras.regularizers.L2(0.001)
-        return tf.keras.Sequential([
-            Input(self.state_dim),
-            Conv2D(filters=32, kernel_size=8, strides=4, activation=tf.nn.relu),
-            Conv2D(filters=64, kernel_size=4, strides=2, activation=tf.nn.relu),
-            Conv2D(filters=64, kernel_size=3, strides=1, activation=tf.nn.relu),
-            Flatten(),
-            Dense(400, activation='relu', kernel_initializer=init, kernel_regularizer=w_reg),
-            Dense(400, activation='relu', kernel_initializer=init, kernel_regularizer=w_reg),
-            Dense(1, activation='linear', kernel_initializer=init, kernel_regularizer=w_reg)
-        ])
+        self.out = Dense(1, activation='linear', kernel_initializer=init, kernel_regularizer=w_reg)
+
+    @tf.function
+    def call(self, x, training=False):
+        for l in self.net:
+            x = l(x)
+        return self.out(x)
 
     def compute_loss(self, v_pred, td_targets):
         mse = tf.keras.losses.MeanSquaredError()
@@ -117,11 +112,11 @@ class Critic:
 
     def train(self, states, td_targets):
         with tf.GradientTape() as tape:
-            v_pred = self.model(states, training=True)
+            v_pred = self(states, training=True)
             assert v_pred.shape == td_targets.shape
             loss = self.compute_loss(v_pred, tf.stop_gradient(td_targets))
-        grads = tape.gradient(loss, self.model.trainable_variables)
-        self.opt.apply_gradients(zip(grads, self.model.trainable_variables))
+        grads = tape.gradient(loss, self.trainable_variables)
+        self.opt.apply_gradients(zip(grads, self.trainable_variables))
         return loss
 
 
@@ -139,7 +134,12 @@ class Agent:
         self.critic_opt = tf.keras.optimizers.Adam(CRITIC_LR)
         self.actor = Actor(self.state_dim, self.action_dim,
                            self.action_bound, self.std_bound)
-        self.critic = Critic(self.state_dim)
+        self.critic = Critic(self.state_dim, self.actor.net)
+
+        self.models = {
+            "actor": self.actor,
+            "critic": self.critic
+        }
 
     def gae_target(self, rewards, v_values, next_v_value, done):
         n_step_targets = np.zeros_like(rewards)
@@ -164,8 +164,31 @@ class Agent:
             batch = np.append(batch, elem, axis=0)
         return batch
 
-    def train(self, episodes=1, max_steps=1000, render=False):
+    def save(self, filepath):
+        """ only model weights """
+        filepath = os.path.join(filepath, 'models')
+        os.makedirs(filepath, exist_ok=True)
+        print('saving model to {}'.format(filepath))
+        for name, model in self.models.items():
+            model.save_weights('{}/{}.h5'.format(filepath, name))
 
+    def load(self, filepath):
+        """ only model weights """
+        #To activate input layer
+        _,_ = self.actor(np.reshape(self.env.reset(), (1, 64, 64, 1)))
+        _ = self.critic(np.reshape(self.env.reset(), (1, 64, 64, 1)))
+        filepath = os.path.join(filepath, 'models')
+        print('loading model from {}'.format(filepath))
+
+        for name, model in self.models.items():
+            model.load_weights('{}/{}.h5'.format(filepath, name))
+            self.models[name] = model
+
+    def train(self, episodes=1, max_steps=1000, render=False, name="agent"):
+        actor_losses = []
+        critic_losses = []
+        actor_losseses = []
+        critic_losseses = []
         for ep in range(episodes):
 
             state_batch = []
@@ -177,7 +200,7 @@ class Agent:
             t, i = time.time(), 0
             state = self.env.reset()
 
-            while not done or i < max_steps:
+            while not done and i < max_steps:
                 if render:
                     self.env.render("human")
 
@@ -202,16 +225,20 @@ class Agent:
                     rewards = self.list_to_batch(reward_batch)
                     old_policys = self.list_to_batch(old_policy_batch)
 
-                    v_values = self.critic.model.predict(states)
-                    next_v_value = self.critic.model.predict(next_state)
+                    v_values = self.critic(states)
+                    next_v_value = self.critic(next_state)
 
                     gaes, td_targets = self.gae_target(
                         rewards, v_values, next_v_value, done)
 
+                    actor_loss = []
+                    critic_loss = []
                     for epoch in range(EPOCHS):
-                        actor_loss = self.actor.train(
-                            old_policys, states, actions, gaes)
-                        critic_loss = self.critic.train(states, td_targets)
+                        actor_loss.append(self.actor.train(
+                            old_policys, states, actions, gaes))
+                        critic_loss.append(self.critic.train(states, td_targets))
+                    actor_losses.append(np.mean(actor_loss))
+                    critic_losses.append(np.mean(critic_loss))
 
                     state_batch = []
                     action_batch = []
@@ -221,9 +248,14 @@ class Agent:
                 episode_reward += reward[0][0]
                 state = next_state[0]
                 i += 1
-
-            print('EP{} EpisodeReward={} Time={}'.format(ep, episode_reward, time.time() - t))
+            actor_losseses.append(np.mean(actor_losses))
+            critic_losseses.append(np.mean(critic_losses))
+            print('EP{} EpisodeReward={} Time={} ActorLoss={} CriticLoss={}'.format(
+                ep, episode_reward, time.time() - t, actor_losseses[-1], critic_losseses[-1])
+            )
             #wandb.log({'Reward': episode_reward})
+        self.save(os.getcwd() + "/vanilla_models/" + name)
+        return actor_losses, critic_losses
 
     def play(self, episodes=5, limit_steps=True, max_steps=1000, render=False):
         rewards = []
@@ -240,7 +272,6 @@ class Agent:
                     self.env.render("human")
                 state = state_new
                 action = self.actor.get_action(state, action_only=True)
-                print(action)
                 state_new, reward, done, _ = self.env.step(action)
                 state_new = np.expand_dims(state_new, axis=0)
                 reward_per_episode.append(reward)
@@ -264,10 +295,10 @@ class Agent:
 def main():
     env = CarRacingWrapper(negative_range=False)
     agent = Agent(env)
-    episodes = 3
-    #agent.play(episodes=1, render=True)
-    agent.train(episodes)
-    #agent.play(episodes=1, render=True)
+    agent.load(os.getcwd() + "/vanilla_models/agent")
+    agent.play(episodes=1, render=True)
+    while True:
+        aloss, closs = agent.train(1)
 
 
 if __name__ == "__main__":

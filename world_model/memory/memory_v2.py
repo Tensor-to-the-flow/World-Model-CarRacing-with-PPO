@@ -95,7 +95,9 @@ class Memory(tf.keras.Model):
 
     def get_y_pred(self, mix_params, temperature=1.0):
         # use sampling function provided by the mdn module to generate predictions
-        y_samples = np.apply_along_axis(mdn.sample_from_output, 2, mix_params, self.output_dim, self.num_mixtures, temp=temperature)
+        y_samples = np.apply_along_axis(
+            mdn.sample_from_output, 2, mix_params, self.output_dim,
+            self.num_mixtures, temp=temperature)
         return y_samples
 
     # only eager execution possible currently
