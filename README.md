@@ -15,5 +15,7 @@ The [really folder](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-
 
 ### authors
 Friedrich Heitzer
+
 Eva Kuth
+
 Pia Stermann
