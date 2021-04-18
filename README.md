@@ -11,4 +11,9 @@ The files for [Vision](https://github.com/Tensor-to-the-flow/World-Model-CarRaci
 The [notebooks directory](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/tree/main/notebooks) contains [a supplementary/additional notebook](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/blob/main/notebooks/memory_development_and_testing.ipynb) which we set up for testing mdn output layers and developing an own version of the Memory module.
 The folder [documentation](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/tree/main/documentation) contains the (previously mentioned) project documentations in ".pdf" format.
 
-The [really folder](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/tree/main/really) contains a copy of the ["ReAllY"](https://github.com/geronimocharlie/ReAllY.git) framework by [Charlie](https://github.com/geronimocharlie). 
+The [really folder](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/tree/main/really) contains a copy of the ["ReAllY"](https://github.com/geronimocharlie/ReAllY.git) framework by [Charlie](https://github.com/geronimocharlie).
+
+###authors
+Friedrich Heitzer
+Eva Kuth
+Pia Stermann
