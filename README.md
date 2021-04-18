@@ -13,7 +13,7 @@ The folder [documentation](https://github.com/Tensor-to-the-flow/World-Model-Car
 
 The [really folder](https://github.com/Tensor-to-the-flow/World-Model-CarRacing-with-PPO/tree/main/really) contains a copy of the ["ReAllY"](https://github.com/geronimocharlie/ReAllY.git) framework by [Charlie](https://github.com/geronimocharlie).
 
-### authors
+### who is responsible for this
 Friedrich Heitzer
 
 Eva Kuth
