@@ -1,4 +1,4 @@
-# World-Model-LunarLanderContinuous-v2-with-PPO
+# World-Model-CarRacing_v0-with-PPO
 
 This repository contains all files we produced/collected for our reimplementation of the "World Models" agent to solve the [CarRacing_v0](https://gym.openai.com/envs/CarRacing-v0/) gym environment as proposed by Schmidhuber and Ha in 2018 (https://github.com/worldmodels/worldmodels.github.io.git).
 
