@@ -1,0 +1,2 @@
+model_checkpoint_path: "160model_v2"
+all_model_checkpoint_paths: "160model_v2"

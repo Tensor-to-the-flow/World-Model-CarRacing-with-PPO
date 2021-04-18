@@ -6,7 +6,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Conv2D, Flatten
-from world_model.data.car_racing import CarRacingWrapper
+from data.car_racing import CarRacingWrapper
 import numpy as np
 import time
 

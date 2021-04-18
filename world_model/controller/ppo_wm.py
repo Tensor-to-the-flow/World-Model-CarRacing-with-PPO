@@ -7,10 +7,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda
 import gym
-#from world_model.data.car_racing import CarRacingWrapper
+from data.car_racing import CarRacingWrapper
 import numpy as np
-#from world_model.vision.vAE import VAE
-#from world_model.memory.memory import Memory
+from vision.vAE import VAE
+from memory_v2 import Memory
 
 tf.keras.backend.set_floatx('float64')
 
@@ -53,11 +53,13 @@ class Actor:
     def create_model(self):
         init = tf.keras.initializers.Orthogonal()
         state_input = Input((self.state_dim,))
-        dense_1 = Dense(32, activation='relu', kernel_initializer=init)(state_input)
-        dense_2 = Dense(32, activation='relu', kernel_initializer=init)(dense_1)
-        out_mu = Dense(self.action_dim, activation='tanh')(dense_2)
+        dense_1 = Dense(256, activation='relu', kernel_initializer=init)(state_input)
+        dense_2 = Dense(256, activation='relu', kernel_initializer=init)(dense_1)
+        dense_3 = Dense(128, activation='relu', kernel_initializer=init)(dense_2)
+        dense_4 = Dense(64, activation='relu', kernel_initializer=init)(dense_3)
+        out_mu = Dense(self.action_dim, activation='tanh')(dense_4)
         #mu_output = Lambda(lambda x: x * self.action_bound)(out_mu)
-        std_output = Dense(self.action_dim, activation='softplus')(dense_2)
+        std_output = Dense(self.action_dim, activation='softplus')(dense_4)
         return tf.keras.models.Model(state_input, [out_mu, std_output])
 
     def compute_loss(self, log_old_policy, log_new_policy, actions, gaes):
@@ -88,9 +90,10 @@ class Critic:
     def create_model(self):
         init = tf.keras.initializers.Orthogonal()
         return tf.keras.Sequential([
-            Input((self.state_dim,)),
-            Dense(32, activation='relu', kernel_initializer=init),
-            Dense(32, activation='relu', kernel_initializer=init),
+            Dense(265, activation='relu', kernel_initializer=init),
+            Dense(256, activation='relu', kernel_initializer=init),
+            Dense(128, activation='relu', kernel_initializer=init),
+            Dense(128, activation='relu', kernel_initializer=init),
             Dense(1, activation='linear')
         ])
 
@@ -109,9 +112,9 @@ class Critic:
 
 
 class Agent:
-    def __init__(self, env, load_model=False, results_dir=None):
+    def __init__(self, env, state_dim, load_model=False, results_dir=None):
         self.env = env
-        self.state_dim = 544
+        self.state_dim = state_dim
         self.action_dim = self.env.action_space.shape[0]
         self.action_bound = []
         self.action_bound.append(self.env.action_space.low)
@@ -175,98 +178,94 @@ class Agent:
             component.load_weights('{}/{}.h5'.format(filepath, name))
             self.components[name] = component
 
-    def train(self, vision, memory, episode_length=1000):
+    def train(self, vision, memory, episodes=1, episode_length=1000, render=False):
 
-        state = memory.lstm.get_zero_hidden_state(
-            np.zeros(35).reshape(1, 1, 35)
-        )
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        old_policy_batch = []
-        actor_loss = []
-        critic_loss = []
-
-        episode_reward = 0
-
-        obs = self.env.reset()
-
-        obs = obs.reshape(1, 64, 64, 1).astype(np.float32)
-        # Collecting mu and logvar for data collection
-        mu, logvar = vision.encode(obs)
-        z = vision.reparameterize(mu, logvar)
-        # encoded obs plus hidden state from memory --> controller input
-        z_state = np.concatenate([z, state], axis=None)
-
-        print(z_state.shape)
-
-        for ep in range(episode_length):
-
-            actor_loss_gatherer = []
-            critic_loss_gatherer = []
-
-            log_old_policy, action = self.actor.get_action(z_state)
-            next_obs, reward, done, _ = self.env.step(action)
-
-            action = tf.cast(action, tf.float64)
-            x = tf.concat([
-                tf.reshape(z, (1, 1, 32)),
-                tf.reshape(action, (1, 1, 3))
-            ], axis=2)
-
-            y, h_state, c_state = memory(x, tf.cast(state, tf.float64), temperature=1.0)
-
-            state = [h_state, c_state]
-            episode_reward += reward
-
-            next_obs = next_obs.reshape(1, 64, 64, 1).astype(np.float32)
-            next_z_state = vision.reparameterize(vision.encode(next_obs))
-            next_z_state = np.concatenate([next_z_state, state], axis=None)
-
-            z_state = np.expand_dims(z_state, axis=0)
-            action = np.reshape(action, [1, self.action_dim])
-            next_z_state = np.expand_dims(next_z_state, axis=0)
-            reward = np.reshape(reward, [1, 1])
-            log_old_policy = np.reshape(log_old_policy, [1, 1])
-
-            state_batch.append(z_state)
-            action_batch.append(action)
-            reward_batch.append((reward+8)/8)
-            old_policy_batch.append(log_old_policy)
-
-            if len(state_batch) >= UPDATE_INTERVAL or done:
-                states = self.list_to_batch(state_batch)
-                actions = self.list_to_batch(action_batch)
-                rewards = self.list_to_batch(reward_batch)
-                old_policys = self.list_to_batch(old_policy_batch)
-
-                v_values = self.critic.model.predict(states)
-                next_v_value = self.critic.model.predict(next_z_state)
-
-                gaes, td_targets = self.gae_target(
-                    rewards, v_values, next_v_value, done)
-
-                for epoch in range(EPOCHS):
-                    actor_loss_gatherer.append(self.actor.train(
-                        old_policys, states, actions, gaes))
-                    critic_loss_gatherer.append(self.critic.train(states, td_targets))
-                actor_loss.append(np.mean(actor_loss_gatherer))
-                critic_loss.append(np.mean(critic_loss_gatherer))
-
-                state_batch = []
-                action_batch = []
-                reward_batch = []
-                old_policy_batch = []
-
-            state = next_z_state
-
-            print('EP{} EpisodeReward={} ActorLoss={} CriticLoss={}'.format(
-                ep, episode_reward, actor_loss, critic_loss)
+        for episode in range(episodes):
+            state = memory.get_zero_hidden_state(
+                np.zeros(35).reshape(1, 1, 35)
             )
-            #wandb.log({'Reward': episode_reward})
+            state_batch = []
+            action_batch = []
+            reward_batch = []
+            old_policy_batch = []
+
+            episode_reward = 0
+
+            obs = self.env.reset()
+
+            obs = obs.reshape(1, 64, 64, 1).astype(np.float32)
+            # Collecting mu and logvar for data collection
+            mu, logvar = vision.encode(obs)
+            z = vision.reparameterize(mu, logvar)
+            # encoded obs plus hidden state from memory --> controller input
+            z_state = np.concatenate([z, state[0]], axis=None)
+
+            for step in range(episode_length):
+                if render:
+                    self.env.render("human")
+
+                log_old_policy, action = self.actor.get_action(z_state)
+                next_obs, reward, done, _ = self.env.step(action)
+
+                action = tf.cast(action, tf.float64)
+                x = tf.concat([
+                    tf.reshape(z, (1, 1, 32)),
+                    tf.reshape(action, (1, 1, 3))
+                ], axis=2)
+
+                y, h_state, c_state = memory(x, tf.cast(state, tf.float64), temperature=1.0)
+
+                state = [h_state, c_state]
+                episode_reward += reward
+
+                next_obs = next_obs.reshape(1, 64, 64, 1).astype(np.float32)
+                mu, logvar = vision.encode(next_obs)
+                next_z_state = vision.reparameterize(mu, logvar)
+                next_z_state = np.concatenate([next_z_state, state[0]], axis=None)
+
+                z_state = np.reshape(z_state, [1, self.state_dim])
+                next_z_state = np.reshape(next_z_state, [1, self.state_dim])
+                action = np.reshape(action, [1, self.action_dim])
+                reward = np.reshape(reward, [1, 1])
+                log_old_policy = np.reshape(log_old_policy, [1, 1])
+
+                state_batch.append(z_state)
+                action_batch.append(action)
+                reward_batch.append((reward+8)/8)
+                old_policy_batch.append(log_old_policy)
+
+                if len(state_batch) >= UPDATE_INTERVAL or done:
+                    states = self.list_to_batch(state_batch)
+                    actions = self.list_to_batch(action_batch)
+                    rewards = self.list_to_batch(reward_batch)
+                    old_policys = self.list_to_batch(old_policy_batch)
+
+                    v_values = self.critic.model.predict(states)
+                    next_v_value = self.critic.model.predict(next_z_state)
+
+                    gaes, td_targets = self.gae_target(
+                        rewards, v_values, next_v_value, done)
+
+                    for epoch in range(EPOCHS):
+                        actor_loss = self.actor.train(
+                            old_policys, states, actions, gaes)
+                        critic_loss = self.critic.train(states, td_targets)
+
+                    state_batch = []
+                    action_batch = []
+                    reward_batch = []
+                    old_policy_batch = []
+
+                state = next_z_state
+
+                if done:
+                    break
+
+            print('EPISODE{} EpisodeReward={}'.format(episode, episode_reward))
+            self.save(os.getcwd() + '/wm_models')
 
     # Doestn work right now
-    def _play(self, episodes=5, limit_steps=False, max_steps=100, render=False):
+    def _play(self, episodes=5, limit_steps=False, max_steps=1000, render=False):
         rewards = []
         print("Playing...")
 
@@ -304,12 +303,12 @@ def main():
     path = os.getcwd()[:-10]
     
     env = CarRacingWrapper()
-    agent = Agent(env)
-    memory = Memory(num_timesteps=1, batch_size=1, load_model=True, results_dir=path + 'memory/160model')
+    agent = Agent(env, state_dim=288)
+    memory = Memory(num_timesteps=1, batch_size=1, load_model=True, results_dir=path + 'memory/160model_v2')
     vision = VAE(load_model=True, results_dir=path + 'vision')
-    episodes = 3
-    
-    agent.train(vision, memory)
+    episodes = 1
+    agent.train(vision, memory, episodes=episodes)
+    agent.train(vision, memory, render=True)
 
 
 if __name__ == "__main__":

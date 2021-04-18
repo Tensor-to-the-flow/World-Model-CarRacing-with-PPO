@@ -49,7 +49,7 @@ class Memory(tf.keras.Model):
 
         #lstm_cell = tf.keras.layers.LSTMCell(lstm_nodes, kernel_initializer='glorot_uniform',recurrent_initializer='glorot_uniform',bias_initializer='zeros',name='lstm_cell')
 
-        self.lstm = tf.keras.layers.LSTM(lstm_nodes, return_sequences=True, return_state=True, name='lstm_layer')
+        self.lstm = tf.keras.layers.LSTM(lstm_nodes, return_sequences=True, return_state=True, input_shape=(num_timesteps, input_dim), name='lstm_layer')
 
         if hidden_units is None:
             self.hidden_layers = []
@@ -58,14 +58,8 @@ class Memory(tf.keras.Model):
 
         self.mdn_out = tf.keras.layers.TimeDistributed(mdn.MDN(output_dim,num_mixtures, name='mdn_outputs'), name='td_mdn')
 
-        self.components = {
-            'lstm': self.lstm,
-            'gaussian-mix': self.mdn_out,
-            'hidden_layers': self.hidden_layers
-        }
-
         if load_model:
-            self.load(results_dir)
+            self.load_weights(results_dir)
 
     @tf.function
     def get_zero_hidden_state(self, inputs):
